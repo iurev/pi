@@ -120,6 +120,21 @@ export interface TuiMainScreenRenderState {
 	previousViewportTop: number;
 }
 
+export interface OffscreenChangeContext {
+	/** Lines rendered for this frame. */
+	newLines: string[];
+	/** First visible buffer line before this render. */
+	prevViewportTop: number;
+	/** Visible row count. */
+	height: number;
+	/** Cursor position extracted from the rendered lines, if any. */
+	cursorPos: { row: number; col: number } | null;
+	/** Render width in columns. */
+	width: number;
+	/** Redraws every line; `true` also clears the screen and the scrollback. */
+	fullRender: (clear: boolean) => void;
+}
+
 /** TUI implementation that renders into the terminal's main screen and scrollback. */
 export class TuiMainScreen extends TuiBase implements TUI {
 	readonly mode = "regular" as const;
@@ -450,7 +465,7 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		// If the first changed line is above the previous viewport, we need a full redraw.
 		if (firstChanged < prevViewportTop) {
 			logRedraw(`firstChanged < viewportTop (${firstChanged} < ${prevViewportTop})`);
-			fullRender(true);
+			this.renderOffscreenChange({ newLines, prevViewportTop, height, cursorPos, width, fullRender });
 			return;
 		}
 
@@ -613,6 +628,17 @@ export class TuiMainScreen extends TuiBase implements TUI {
 		this.previousKittyImageIds = this.collectKittyImageIds(newLines);
 		this.previousWidth = width;
 		this.previousHeight = height;
+	}
+
+	/**
+	 * Renders when the first changed line is above the previous viewport, where differential
+	 * rendering cannot reach it. The default redraws every line and clears the screen and the
+	 * scrollback (a line that is no longer visible cannot be patched in place).
+	 *
+	 * Override this to repaint only the visible rows, or to skip the redraw entirely.
+	 */
+	protected renderOffscreenChange(context: OffscreenChangeContext): void {
+		context.fullRender(true);
 	}
 
 	/**
